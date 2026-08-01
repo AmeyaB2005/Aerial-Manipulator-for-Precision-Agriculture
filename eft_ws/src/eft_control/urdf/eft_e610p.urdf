@@ -1,0 +1,306 @@
+<?xml version="1.0"?>
+<robot name="eft_e610p">
+
+  <!-- Base Footprint (Ground projection) -->
+  <link name="base_footprint"/>
+
+  <joint name="base_footprint_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 0.337" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Base Link (Hub + Arms + Landing Gear + Support Bars) -->
+  <link name="base_link">
+    <!-- Hub Visual -->
+    <visual>
+      <origin xyz="0 0 0.08" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.18" length="0.08"/>
+      </geometry>
+      <material name="dark_gray">
+        <color rgba="0.15 0.15 0.15 1.0"/>
+      </material>
+    </visual>
+
+    <!-- Arm 0 Visual -->
+    <visual>
+      <origin xyz="0 0.35175 0.08" rpy="0 1.570796327 1.570796327"/>
+      <geometry>
+        <cylinder radius="0.015" length="0.7035"/>
+      </geometry>
+      <material name="dark_gray"/>
+    </visual>
+
+    <!-- Arm 1 Visual -->
+    <visual>
+      <origin xyz="0 -0.35175 0.08" rpy="0 1.570796327 -1.570796327"/>
+      <geometry>
+        <cylinder radius="0.015" length="0.7035"/>
+      </geometry>
+      <material name="dark_gray"/>
+    </visual>
+
+    <!-- Arm 2 Visual -->
+    <visual>
+      <origin xyz="0.3046 -0.175875 0.08" rpy="0 1.570796327 -0.5236"/>
+      <geometry>
+        <cylinder radius="0.015" length="0.7035"/>
+      </geometry>
+      <material name="dark_gray"/>
+    </visual>
+
+    <!-- Arm 3 Visual -->
+    <visual>
+      <origin xyz="-0.3046 0.175875 0.08" rpy="0 1.570796327 2.618"/>
+      <geometry>
+        <cylinder radius="0.015" length="0.7035"/>
+      </geometry>
+      <material name="dark_gray"/>
+    </visual>
+
+    <!-- Arm 4 Visual -->
+    <visual>
+      <origin xyz="0.3046 0.175875 0.08" rpy="0 1.570796327 0.5236"/>
+      <geometry>
+        <cylinder radius="0.015" length="0.7035"/>
+      </geometry>
+      <material name="dark_gray"/>
+    </visual>
+
+    <!-- Arm 5 Visual -->
+    <visual>
+      <origin xyz="-0.3046 -0.175875 0.08" rpy="0 1.570796327 -2.618"/>
+      <geometry>
+        <cylinder radius="0.015" length="0.7035"/>
+      </geometry>
+      <material name="dark_gray"/>
+    </visual>
+
+    <!-- Skid Left Visual -->
+    <visual>
+      <origin xyz="0 0.253 -0.322" rpy="0 1.570796327 0"/>
+      <geometry>
+        <cylinder radius="0.015" length="0.8"/>
+      </geometry>
+      <material name="dark_gray"/>
+    </visual>
+
+    <!-- Skid Right Visual -->
+    <visual>
+      <origin xyz="0 -0.253 -0.322" rpy="0 1.570796327 0"/>
+      <geometry>
+        <cylinder radius="0.015" length="0.8"/>
+      </geometry>
+      <material name="dark_gray"/>
+    </visual>
+
+    <!-- Leg Front Left Visual -->
+    <visual>
+      <origin xyz="0.1895 0.1915 -0.121" rpy="0.297 -0.333 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.443"/>
+      </geometry>
+      <material name="dark_gray"/>
+    </visual>
+
+    <!-- Leg Back Left Visual -->
+    <visual>
+      <origin xyz="-0.1895 0.1915 -0.121" rpy="0.297 0.333 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.443"/>
+      </geometry>
+      <material name="dark_gray"/>
+    </visual>
+
+    <!-- Leg Front Right Visual -->
+    <visual>
+      <origin xyz="0.1895 -0.1915 -0.121" rpy="-0.297 -0.333 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.443"/>
+      </geometry>
+      <material name="dark_gray"/>
+    </visual>
+
+    <!-- Leg Back Right Visual -->
+    <visual>
+      <origin xyz="-0.1895 -0.1915 -0.121" rpy="-0.297 0.333 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.443"/>
+      </geometry>
+      <material name="dark_gray"/>
+    </visual>
+
+    <!-- Tank Support Front Visual -->
+    <visual>
+      <origin xyz="0.189 0 0" rpy="1.570796327 0 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.39"/>
+      </geometry>
+      <material name="dark_gray"/>
+    </visual>
+
+    <!-- Tank Support Back Visual -->
+    <visual>
+      <origin xyz="-0.189 0 0" rpy="1.570796327 0 0"/>
+      <geometry>
+        <cylinder radius="0.01" length="0.39"/>
+      </geometry>
+      <material name="dark_gray"/>
+    </visual>
+  </link>
+
+  <!-- Spray/Payload Tank -->
+  <link name="tank_link">
+    <!-- Main Tank Body -->
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.38 0.38 0.18"/>
+      </geometry>
+      <material name="white">
+        <color rgba="0.9 0.9 0.9 0.8"/>
+      </material>
+    </visual>
+
+    <!-- Top Mount Plate -->
+    <visual>
+      <origin xyz="-0.05 0 0.09" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.22 0.26 0.01"/>
+      </geometry>
+      <material name="black">
+        <color rgba="0.15 0.15 0.15 1.0"/>
+      </material>
+    </visual>
+
+    <!-- Filling Cap/Lid -->
+    <visual>
+      <origin xyz="0.12 0 0.095" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.05" length="0.03"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+  </link>
+
+  <joint name="tank_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="tank_link"/>
+    <origin xyz="0 0 -0.12" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Rotors (Motors + Propellers) -->
+  <!-- Rotor 0 (CW, Left) -->
+  <link name="rotor_0">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.3" length="0.01"/>
+      </geometry>
+      <material name="red">
+        <color rgba="0.8 0.1 0.1 0.6"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="rotor_0_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="rotor_0"/>
+    <origin xyz="0 0.7035 0.1" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="10" velocity="100"/>
+  </joint>
+
+  <!-- Rotor 1 (CCW, Right) -->
+  <link name="rotor_1">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.3" length="0.01"/>
+      </geometry>
+      <material name="red"/>
+    </visual>
+  </link>
+  <joint name="rotor_1_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="rotor_1"/>
+    <origin xyz="0 -0.7035 0.1" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="10" velocity="100"/>
+  </joint>
+
+  <!-- Rotor 2 (CW, Front Right) -->
+  <link name="rotor_2">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.3" length="0.01"/>
+      </geometry>
+      <material name="black">
+        <color rgba="0.1 0.1 0.1 0.6"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="rotor_2_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="rotor_2"/>
+    <origin xyz="0.6092 -0.35175 0.1" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="10" velocity="100"/>
+  </joint>
+
+  <!-- Rotor 3 (CCW, Back Left) -->
+  <link name="rotor_3">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.3" length="0.01"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+  </link>
+  <joint name="rotor_3_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="rotor_3"/>
+    <origin xyz="-0.6092 0.35175 0.1" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="10" velocity="100"/>
+  </joint>
+
+  <!-- Rotor 4 (CCW, Front Left) -->
+  <link name="rotor_4">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.3" length="0.01"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+  </link>
+  <joint name="rotor_4_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="rotor_4"/>
+    <origin xyz="0.6092 0.35175 0.1" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="10" velocity="100"/>
+  </joint>
+
+  <!-- Rotor 5 (CW, Back Right) -->
+  <link name="rotor_5">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.3" length="0.01"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+  </link>
+  <joint name="rotor_5_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="rotor_5"/>
+    <origin xyz="-0.6092 -0.35175 0.1" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="10" velocity="100"/>
+  </joint>
+
+</robot>
