@@ -153,6 +153,7 @@ class CustomController(Node):
         # -----------------------------------------------------------------
         pos_error = self.target_pos - self.current_pos
         self.integral_pos_error += pos_error * self.dt
+        self.integral_pos_error = np.clip(self.integral_pos_error, -2.0, 2.0) # Prevent integral windup
 
         # Calculate target acceleration (Inertial Frame)
         a_des = (self.Kp_pos * pos_error) + (self.Kd_pos * (-self.current_vel)) + (self.Ki_pos * self.integral_pos_error)
@@ -171,13 +172,26 @@ class CustomController(Node):
         # Calculate Roll and Pitch angles with correct sign relationships
         pitch_des = -a_des_x_body / self.g
         roll_des = a_des_y_body / self.g
+        
+        # Clamp roll and pitch setpoints to prevent extreme tilt angles (+/- 30 deg)
+        max_tilt = 0.52
+        pitch_des = max(-max_tilt, min(max_tilt, pitch_des))
+        roll_des = max(-max_tilt, min(max_tilt, roll_des))
+        
         yaw_des = 0.0
 
         # -----------------------------------------------------------------
         # B. MIDDLE LOOP: Attitude Control
         # -----------------------------------------------------------------
-        att_error = np.array([roll_des - roll_curr, pitch_des - pitch_curr, yaw_des - yaw_curr])
+        # Shortest-path yaw error wrapping
+        yaw_error = yaw_des - yaw_curr
+        yaw_error = math.atan2(math.sin(yaw_error), math.cos(yaw_error))
+        
+        att_error = np.array([roll_des - roll_curr, pitch_des - pitch_curr, yaw_error])
         rates_des = self.Kp_att * att_error
+        
+        # Limit desired body rates to prevent extreme commands
+        rates_des = np.clip(rates_des, -2.0, 2.0)
 
         # -----------------------------------------------------------------
         # C. INNER LOOP: Angular Rate Control -> Desired Torques
