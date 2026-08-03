@@ -49,13 +49,3 @@ param set-default SIM_GZ_EC_FUNC4 104
 param set-default SIM_GZ_EC_FUNC5 105
 param set-default SIM_GZ_EC_FUNC6 106
 
-# Automatic Arming and Takeoff Sequence
-(
-    sleep 10
-    echo "SITL Auto-Launch: Arming..."
-    commander arm
-    sleep 2
-    echo "SITL Auto-Launch: Taking off..."
-    commander takeoff
-) &
-
