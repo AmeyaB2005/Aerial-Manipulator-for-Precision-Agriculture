@@ -51,8 +51,8 @@ class CustomController(Node):
         # =====================================================================
         # Exact motor positions (PX, PY) and direction constants from airframe setup
         px = np.array([0.0, 0.0, 0.6092, -0.6092, 0.6092, -0.6092])
-        py = np.array([0.7035, -0.7035, -0.35175, 0.35175, 0.35175, -0.35175])
-        km_dir = np.array([1.0, -1.0, 1.0, -1.0, -1.0, 1.0]) # 1.0 for CW (positive yaw torque), -1.0 for CCW (negative yaw torque)
+        py = np.array([-0.7035, 0.7035, 0.35175, -0.35175, -0.35175, 0.35175])
+        km_dir = np.array([-1.0, 1.0, -1.0, 1.0, 1.0, -1.0])
 
         # Construct M matrix
         self.M = np.zeros((4, 6))
