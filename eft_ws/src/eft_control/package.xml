@@ -4,7 +4,7 @@
   <name>eft_control</name>
   <version>0.0.0</version>
   <description>TODO: Package description</description>
-  <maintainer email="ameya@todo.todo">ameya</maintainer>
+  <maintainer email="ameyabhagwat2005@gmail.com">AmeyaB2005</maintainer>
   <license>TODO: License declaration</license>
 
   <depend>rclpy</depend>

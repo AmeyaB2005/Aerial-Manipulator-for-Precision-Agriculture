@@ -18,8 +18,8 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='ameya',
-    maintainer_email='ameya@todo.todo',
+    maintainer='AmeyaB2005',
+    maintainer_email='ameyabhagwat2005@gmail.com',
     description='TODO: Package description',
     license='TODO: License declaration',
     extras_require={
