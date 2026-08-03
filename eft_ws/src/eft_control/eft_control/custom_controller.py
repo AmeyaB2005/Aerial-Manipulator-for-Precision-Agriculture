@@ -14,7 +14,7 @@ class CustomController(Node):
         # =====================================================================
         # 1. PHYSICAL CONSTANTS & DRONE PARAMETERS (EFT E610P)
         # =====================================================================
-        self.m = 7.03          # Mass (kg) - Frame + empty tank baseline
+        self.m = 11.77         # Mass (kg) - Link sum (base + tank + 6 rotors)
         self.g = 9.81          # Gravity (m/s^2)
         self.kf = 8.0e-05      # Motor thrust constant (matching simulation)
         self.km = 0.05         # Motor moment scale
