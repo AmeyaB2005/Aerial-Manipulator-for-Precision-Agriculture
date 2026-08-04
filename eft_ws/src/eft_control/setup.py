@@ -29,7 +29,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'teleop_bridge = eft_control.teleop_bridge:main'
+            'teleop_bridge = eft_control.teleop_bridge:main',
+            'custom_flight = eft_control.custom_controller:main'
         ],
     },
 )

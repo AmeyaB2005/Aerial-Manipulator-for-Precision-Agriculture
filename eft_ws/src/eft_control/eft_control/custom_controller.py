@@ -4,8 +4,32 @@ import numpy as np
 import math
 
 # PX4 ROS 2 Message Interfaces
-from px4_msgs.msg import OffboardControlMode, VehicleCommand, ActuatorMotors, VehicleOdometry, VehicleAttitude, SensorCombined
+from px4_msgs.msg import OffboardControlMode, VehicleCommand, ActuatorMotors, VehicleOdometry, VehicleAttitude
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
+from geometry_msgs.msg import Point
+
+def euler_to_quat(roll, pitch, yaw):
+    cy = math.cos(yaw * 0.5)
+    sy = math.sin(yaw * 0.5)
+    cp = math.cos(pitch * 0.5)
+    sp = math.sin(pitch * 0.5)
+    cr = math.cos(roll * 0.5)
+    sr = math.sin(roll * 0.5)
+
+    w = cr * cp * cy + sr * sp * sy
+    x = sr * cp * cy - cr * sp * sy
+    y = cr * sp * cy + sr * cp * sy
+    z = cr * cp * sy - sr * sp * cy
+    return np.array([w, x, y, z])
+
+def quaternion_multiply(q1, q2):
+    w1, x1, y1, z1 = q1
+    w2, x2, y2, z2 = q2
+    w = w1*w2 - x1*x2 - y1*y2 - z1*z2
+    x = w1*x2 + x1*w2 + y1*z2 - z1*y2
+    y = w1*y2 - x1*z2 + y1*w2 + z1*x2
+    z = w1*z2 + x1*y2 - y1*x2 + z1*w2
+    return np.array([w, x, y, z])
 
 class CustomController(Node):
     def __init__(self):
@@ -14,37 +38,41 @@ class CustomController(Node):
         # =====================================================================
         # 1. PHYSICAL CONSTANTS & DRONE PARAMETERS (EFT E610P)
         # =====================================================================
-        self.m = 11.77         # Mass (kg) - Link sum (base + tank + 6 rotors)
+        self.m = 11.77         # Mass (kg) - base + tank + 6 rotors
         self.g = 9.81          # Gravity (m/s^2)
-        self.kf = 8.0e-05      # Motor thrust constant (matching simulation)
-        self.km = 0.05         # Motor moment scale
-        self.max_rad_s = 1000.0 # Max motor speed in rad/s (matching simulation maxRotVelocity)
+        self.kf = 8.0e-05      # Motor thrust constant
+        self.km = 0.028        # Motor moment scale (from momentConstant in SDF)
+        self.max_rad_s = 1000.0 # Max motor speed in rad/s
+        
+        # Inertia tensor (including rotors calculated via parallel axis theorem)
+        self.I = np.array([1.27, 1.27, 2.51])
 
         # =====================================================================
         # 2. TUNING GAINS (CASCADED PID ARCHITECTURE)
         # =====================================================================
-        # Outer Loop: Position PID Gains (Error -> Desired Acceleration/Thrust)
-        self.Kp_pos = np.array([1.5, 1.5, 2.0])   # [X, Y, Z]
-        self.Kd_pos = np.array([0.8, 0.8, 1.2])
-        self.Ki_pos = np.array([0.01, 0.01, 0.05])
+        # Outer Loop: Position PID Gains (Error -> Desired Acceleration)
+        self.Kp_pos = np.array([1.0, 1.0, 1.5])   # [X, Y, Z]
+        self.Kd_pos = np.array([0.6, 0.6, 0.8])
+        self.Ki_pos = np.array([0.01, 0.01, 0.02]) # Small integral gain to reduce steady-state offset
 
-        # Middle Loop: Attitude PID Gains (Angle Error -> Desired Angular Rates)
-        self.Kp_att = np.array([6.0, 6.0, 3.0])   # [Roll, Pitch, Yaw]
+        # Middle Loop: Attitude P Gains (Angle Error -> Desired Angular Rates)
+        self.Kp_att = np.array([5.0, 5.0, 3.0])   # [Roll, Pitch, Yaw]
 
-        # Inner Loop: Angular Rate PID Gains (Rate Error -> Target Torques)
-        self.Kp_rate = np.array([0.15, 0.15, 0.10]) # [p, q, r]
-        self.Kd_rate = np.array([0.01, 0.01, 0.005])
+        # Inner Loop: Angular Rate P Gains (Rate Error -> Target Torques)
+        self.Kp_rate = np.array([5.0, 5.0, 3.0]) # [p, q, r]
 
         # =====================================================================
         # 3. STATE VARIABLES & ERROR INTEGRATORS
         # =====================================================================
+        self.timestamp = 0
         self.current_pos = np.array([0.0, 0.0, 0.0])
         self.current_vel = np.array([0.0, 0.0, 0.0])
-        self.current_quat = np.array([1.0, 0.0, 0.0, 0.0]) # [q0, q1, q2, q3]
+        self.current_quat = np.array([1.0, 0.0, 0.0, 0.0]) # [w, x, y, z]
         self.current_rates = np.array([0.0, 0.0, 0.0])     # [p, q, r] (rad/s)
 
         self.target_pos = np.array([0.0, 0.0, -3.0])       # Target: Hover at 3m (NED Z is negative)
         self.integral_pos_error = np.array([0.0, 0.0, 0.0])
+        self.loop_counter = 0
 
         # =====================================================================
         # 4. CONTROL ALLOCATION (EXACT 4x6 MIXER MATRIX FOR EFT E610P)
@@ -59,7 +87,7 @@ class CustomController(Node):
         self.M[0, :] = self.kf                 # Thrust row
         self.M[1, :] = -py * self.kf           # Roll torque row
         self.M[2, :] = px * self.kf            # Pitch torque row
-        self.M[3, :] = km_dir * self.km         # Yaw torque row
+        self.M[3, :] = km_dir * self.km * self.kf # Yaw torque row
         
         # Moore-Penrose Pseudo-Inverse (6x4)
         self.M_pinv = np.linalg.pinv(self.M)
@@ -79,9 +107,12 @@ class CustomController(Node):
         self.pub_vehicle_command = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', 10)
         self.pub_motors = self.create_publisher(ActuatorMotors, '/fmu/in/actuator_motors', 10)
 
+        # We subscribe to VehicleOdometry for position, velocity, and angular rates (clean & filtered)
         self.sub_odom = self.create_subscription(VehicleOdometry, '/fmu/out/vehicle_odometry', self.odom_callback, qos_profile)
+        # We subscribe to VehicleAttitude for the Hamiltonian quaternion q(w, x, y, z)
         self.sub_att = self.create_subscription(VehicleAttitude, '/fmu/out/vehicle_attitude', self.att_callback, qos_profile)
-        self.sub_sensor = self.create_subscription(SensorCombined, '/fmu/out/sensor_combined', self.sensor_callback, qos_profile)
+        # Subscribe to dynamically set target position
+        self.sub_target = self.create_subscription(Point, '/eft/target_position', self.target_callback, 10)
 
         # 100 Hz Control Loop Timer
         self.dt = 0.01
@@ -90,14 +121,17 @@ class CustomController(Node):
 
     # --- Callbacks ---
     def odom_callback(self, msg):
+        self.timestamp = msg.timestamp
         self.current_pos = np.array(msg.position)
         self.current_vel = np.array(msg.velocity)
+        self.current_rates = np.array(msg.angular_velocity)
 
     def att_callback(self, msg):
         self.current_quat = np.array(msg.q) # [w, x, y, z]
 
-    def sensor_callback(self, msg):
-        self.current_rates = np.array(msg.gyro_rad) # [p, q, r]
+    def target_callback(self, msg):
+        self.target_pos = np.array([msg.x, msg.y, msg.z])
+        self.get_logger().info(f"Updated target position to: {self.target_pos.round(2)}")
 
     # --- Helper: Quaternion to Euler (Roll, Pitch, Yaw) ---
     def quat_to_euler(self, q):
@@ -110,6 +144,7 @@ class CustomController(Node):
     def arm_and_set_offboard(self):
         # Engage Offboard Mode
         cmd_mode = VehicleCommand()
+        cmd_mode.timestamp = self.timestamp
         cmd_mode.command = VehicleCommand.VEHICLE_CMD_DO_SET_MODE
         cmd_mode.param1 = 1.0
         cmd_mode.param2 = 6.0
@@ -120,6 +155,7 @@ class CustomController(Node):
 
         # Arm Drone
         cmd_arm = VehicleCommand()
+        cmd_arm.timestamp = self.timestamp
         cmd_arm.command = VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM
         cmd_arm.param1 = 1.0
         cmd_arm.target_system, cmd_arm.target_component = 1, 1
@@ -132,8 +168,13 @@ class CustomController(Node):
     # 6. MAIN 100Hz CONTROL LOOP
     # =====================================================================
     def control_loop(self):
+        # Return early if no telemetry message has been received yet (timestamp is 0)
+        if self.timestamp == 0:
+            return
+
         # Publish Offboard Heartbeat with direct actuator authority enabled
         mode_msg = OffboardControlMode()
+        mode_msg.timestamp = self.timestamp
         mode_msg.position = False
         mode_msg.velocity = False
         mode_msg.acceleration = False
@@ -149,17 +190,19 @@ class CustomController(Node):
             return
 
         # -----------------------------------------------------------------
-        # A. OUTER LOOP: Position Control (Newton-Euler Kinematics/Dynamics)
+        # A. OUTER LOOP: Position Control
         # -----------------------------------------------------------------
         pos_error = self.target_pos - self.current_pos
         self.integral_pos_error += pos_error * self.dt
-        self.integral_pos_error = np.clip(self.integral_pos_error, -2.0, 2.0) # Prevent integral windup
+        self.integral_pos_error = np.clip(self.integral_pos_error, -2.0, 2.0)
 
         # Calculate target acceleration (Inertial Frame)
         a_des = (self.Kp_pos * pos_error) + (self.Kd_pos * (-self.current_vel)) + (self.Ki_pos * self.integral_pos_error)
 
-        # Total Thrust Force (N) along Body Z
-        T = self.m * (self.g - a_des[2])
+        # Total Desired Thrust Force vector F_des = m * (g_vec - a_des)
+        g_vec = np.array([0.0, 0.0, self.g])
+        F_des = self.m * (g_vec - a_des)
+        T = np.linalg.norm(F_des)
         T = max(0.0, T) # Ensure non-negative thrust
 
         # Extract current yaw to rotate target accelerations into the body yaw-aligned frame
@@ -169,7 +212,7 @@ class CustomController(Node):
         a_des_x_body = a_des[0] * math.cos(yaw_curr) + a_des[1] * math.sin(yaw_curr)
         a_des_y_body = -a_des[0] * math.sin(yaw_curr) + a_des[1] * math.cos(yaw_curr)
 
-        # Calculate Roll and Pitch angles with correct sign relationships
+        # Calculate Roll and Pitch angles
         pitch_des = -a_des_x_body / self.g
         roll_des = a_des_y_body / self.g
         
@@ -177,29 +220,39 @@ class CustomController(Node):
         max_tilt = 0.52
         pitch_des = max(-max_tilt, min(max_tilt, pitch_des))
         roll_des = max(-max_tilt, min(max_tilt, roll_des))
-        
         yaw_des = 0.0
 
         # -----------------------------------------------------------------
-        # B. MIDDLE LOOP: Attitude Control
+        # B. MIDDLE LOOP: Quaternion Attitude Control (Shortest Path)
         # -----------------------------------------------------------------
-        # Shortest-path yaw error wrapping
-        yaw_error = yaw_des - yaw_curr
-        yaw_error = math.atan2(math.sin(yaw_error), math.cos(yaw_error))
+        q_des = euler_to_quat(roll_des, pitch_des, yaw_des)
+        q_curr = self.current_quat
+        q_curr_inv = np.array([q_curr[0], -q_curr[1], -q_curr[2], -q_curr[3]])
         
-        att_error = np.array([roll_des - roll_curr, pitch_des - pitch_curr, yaw_error])
+        q_err = quaternion_multiply(q_curr_inv, q_des)
+        if q_err[0] < 0:
+            q_err = -q_err
+            
+        # The vector part of the error quaternion represents the rotation vector error in body frame
+        att_error = 2.0 * q_err[1:4]
+        
         rates_des = self.Kp_att * att_error
         
         # Limit desired body rates to prevent extreme commands
-        rates_des = np.clip(rates_des, -2.0, 2.0)
+        rates_des = np.clip(rates_des, -3.0, 3.0)
 
         # -----------------------------------------------------------------
-        # C. INNER LOOP: Angular Rate Control -> Desired Torques
+        # C. INNER LOOP: Angular Rate Control -> Desired Torques (N-m)
         # -----------------------------------------------------------------
         rate_error = rates_des - self.current_rates
-        torques = (self.Kp_rate * rate_error) + (self.Kd_rate * (-self.current_rates))
+        torques = self.I * (self.Kp_rate * rate_error)
         
-        tau_phi, tau_theta, tau_psi = torques[0], torques[1], torques[2]
+        # Ground takeoff safety guard: if the drone is on the ground (altitude > -0.3m in NED),
+        # disable control torques to avoid ground contact physics explosions.
+        if self.current_pos[2] > -0.3:
+            tau_phi, tau_theta, tau_psi = 0.0, 0.0, 0.0
+        else:
+            tau_phi, tau_theta, tau_psi = torques[0], torques[1], torques[2]
 
         # -----------------------------------------------------------------
         # D. MIXER MATRIX: Virtual Commands -> Motor Speeds (omega^2)
@@ -218,8 +271,25 @@ class CustomController(Node):
         # E. PUBLISH TO MOTOR ACTUATORS
         # -----------------------------------------------------------------
         actuator_msg = ActuatorMotors()
+        actuator_msg.timestamp = self.timestamp
         actuator_msg.control = motor_cmds + [0.0] * 6 # Fill remaining array slots with 0 to match float32[12] size
         self.pub_motors.publish(actuator_msg)
+
+        # -----------------------------------------------------------------
+        # F. DIAGNOSTIC PRINTING (THROTTLED AT 1Hz / 100 LOOPS)
+        # -----------------------------------------------------------------
+        self.loop_counter += 1
+        if self.loop_counter % 100 == 0:
+            self.get_logger().info(
+                f"\n--- Loop {self.loop_counter} ---\n"
+                f"Pos Curr: {self.current_pos.round(2)} | Target: {self.target_pos.round(2)}\n"
+                f"Att Curr: R={round(roll_curr, 2)} P={round(pitch_curr, 2)} Y={round(yaw_curr, 2)}\n"
+                f"Att Des : R={round(roll_des, 2)} P={round(pitch_des, 2)} Y={round(yaw_des, 2)}\n"
+                f"Rates Des: {rates_des.round(2)} | Curr: {self.current_rates.round(2)}\n"
+                f"Torques: {torques.round(3)} | Thrust: {round(T, 1)} N\n"
+                f"Motor Cmds: {np.array(motor_cmds).round(3)}"
+            )
+
 
 def main(args=None):
     rclpy.init(args=args)
