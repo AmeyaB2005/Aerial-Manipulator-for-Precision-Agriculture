@@ -29,6 +29,8 @@ class TeleopBridge(Node):
         self.vy = 0.0
         self.vz = 0.0
         self.yaw_rate = 0.0
+        self.target_z = 0.0
+        self.last_cmd_time = self.get_clock().now()
 
         # Heartbeat timer (Offboard mode requires continuous publishing at > 2Hz)
         self.timer = self.create_timer(0.1, self.timer_callback)
@@ -36,30 +38,61 @@ class TeleopBridge(Node):
         self.arm_count = 0
 
     def cmd_vel_callback(self, msg):
-        # Map teleop keys to velocities:
-        # Twist linear.x -> forward (pitch), linear.y -> left (roll), linear.z -> up (throttle)
-        # PX4 uses NED coordinates: x -> Forward, y -> East/Right, z -> Down/Descend
+        # Map teleop keys to velocities and track command timestamps
+        self.last_cmd_time = self.get_clock().now()
         self.vx = msg.linear.x
         self.vy = -msg.linear.y  # Invert Y to map left (ROS) to East/Right (PX4)
-        self.vz = -msg.linear.z  # Invert Z to map up (ROS) to Down (PX4)
         self.yaw_rate = -msg.angular.z # Invert Yaw to match turning directions
 
+        # Check for Takeoff / Landing commands sent via angular.x
+        if msg.angular.x == 1.0:
+            # Force Offboard mode and Arm commands if takeoff key is pressed
+            self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)
+            self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
+            if self.target_z >= 0.0:
+                self.target_z = -1.5  # Takeoff to 1.5m initial height
+                self.get_logger().info(f"Takeoff command: Target Z set to {self.target_z}m")
+            else:
+                self.target_z -= 0.5  # Incremental takeoff (climbs slowly)
+                self.get_logger().info(f"Takeoff command (incremental): Target Z set to {self.target_z}m")
+        elif msg.angular.x == -1.0:
+            self.target_z = 0.0  # Land on ground
+            self.get_logger().info("Landing command: Target Z set to 0.0m")
+
+        # Support adjusting target height with Z linear velocity (from climb/descend keys)
+        if msg.linear.z > 0.0:
+            self.target_z -= 0.2  # Climb target Z (negative is up)
+            self.get_logger().info(f"Manual Climb: Target Z set to {self.target_z}m")
+        elif msg.linear.z < 0.0:
+            self.target_z += 0.2  # Descend target Z
+            if self.target_z > 0.0:
+                self.target_z = 0.0
+            self.get_logger().info(f"Manual Descend: Target Z set to {self.target_z}m")
+
     def timer_callback(self):
-        # 1. Publish Offboard Control Mode
+        # 1. Publish Offboard Control Mode (Position and Velocity setpoints active)
         offboard_msg = OffboardControlMode()
         offboard_msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        offboard_msg.position = False
+        offboard_msg.position = True
         offboard_msg.velocity = True
         offboard_msg.acceleration = False
         offboard_msg.attitude = False
         offboard_msg.body_rate = False
         self.offboard_mode_pub.publish(offboard_msg)
 
-        # 2. Publish Trajectory Setpoint (Velocity Setpoint)
+        # If no new control keys are pressed for > 0.3s, stop horizontal drift
+        now = self.get_clock().now()
+        dt_cmd = (now - self.last_cmd_time).nanoseconds / 1e9
+        if dt_cmd > 0.3:
+            self.vx = 0.0
+            self.vy = 0.0
+            self.yaw_rate = 0.0
+
+        # 2. Publish Trajectory Setpoint (Z target altitude + XY velocities)
         setpoint_msg = TrajectorySetpoint()
         setpoint_msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        setpoint_msg.position = [float('nan'), float('nan'), float('nan')]
-        setpoint_msg.velocity = [self.vx, self.vy, self.vz]
+        setpoint_msg.position = [float('nan'), float('nan'), self.target_z]
+        setpoint_msg.velocity = [self.vx, self.vy, float('nan')]
         setpoint_msg.acceleration = [float('nan'), float('nan'), float('nan')]
         setpoint_msg.jerk = [float('nan'), float('nan'), float('nan')]
         setpoint_msg.yaw = float('nan')

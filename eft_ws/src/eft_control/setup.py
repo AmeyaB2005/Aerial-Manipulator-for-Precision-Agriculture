@@ -30,7 +30,10 @@ setup(
     entry_points={
         'console_scripts': [
             'teleop_bridge = eft_control.teleop_bridge:main',
-            'custom_flight = eft_control.custom_controller:main'
+            'trajectory_visualizer = eft_control.trajectory_visualizer:main',
+            'waypoint_controller = eft_control.waypoint_controller:main',
+            'keyboard_teleop = eft_control.keyboard_teleop:main',
+            'joystick_teleop = eft_control.joystick_teleop:main'
         ],
     },
 )
