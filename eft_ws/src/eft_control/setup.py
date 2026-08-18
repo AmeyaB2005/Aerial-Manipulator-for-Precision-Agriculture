@@ -32,6 +32,7 @@ setup(
             'teleop_bridge = eft_control.teleop_bridge:main',
             'trajectory_visualizer = eft_control.trajectory_visualizer:main',
             'waypoint_controller = eft_control.waypoint_controller:main',
+            'waypoint_controller_mujoco = eft_control.waypoint_controller_mujoco:main',
             'keyboard_teleop = eft_control.keyboard_teleop:main',
             'joystick_teleop = eft_control.joystick_teleop:main'
         ],

@@ -150,6 +150,44 @@
     </visual>
   </link>
 
+  <!-- Camera Mounting Rod -->
+  <link name="camera_mount">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 1.570796327 0"/>
+      <geometry>
+        <cylinder radius="0.008" length="0.12"/>
+      </geometry>
+      <material name="dark_gray">
+        <color rgba="0.15 0.15 0.15 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="camera_mount_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="camera_mount"/>
+    <origin xyz="0.24 0 0.08" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Chin Camera Link for RViz visualization -->
+  <link name="chin_camera">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.06 0.06 0.06"/>
+      </geometry>
+      <material name="black">
+        <color rgba="0.15 0.15 0.15 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <joint name="chin_camera_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="chin_camera"/>
+    <origin xyz="0.30 0 0.08" rpy="0 1.2217 0"/>
+  </joint>
+
   <!-- Spray/Payload Tank -->
   <link name="tank_link">
     <!-- Main Tank Body -->

@@ -6,7 +6,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     pkg_share = get_package_share_directory('eft_control')
-    rviz_config_file = os.path.join(pkg_share, 'rviz', 'eft_e610p.rviz')
+    rviz_config_file = os.path.join(pkg_share, 'config', 'drone_display.rviz')
     urdf_file = os.path.join(pkg_share, 'urdf', 'eft_e610p.urdf')
 
     # Read URDF contents
@@ -17,6 +17,7 @@ def generate_launch_description():
     px4_env = os.environ.copy()
     px4_env['GALLIUM_DRIVER'] = 'llvmpipe'
     px4_env['PX4_GZ_NO_FOLLOW'] = '1'
+    px4_env['PX4_GZ_WORLD'] = 'farmland'
 
     # 1. Micro XRCE-DDS Agent
     dds_agent = ExecuteProcess(
@@ -102,13 +103,16 @@ def generate_launch_description():
         parameters=[{'use_sim_time': True}]
     )
 
-    # 10. ROS-Gazebo Clock Bridge Node
+    # 10. ROS-Gazebo Clock & Camera Bridge Node
     clock_bridge = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
         name='clock_bridge',
         output='screen',
-        arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock']
+        arguments=[
+            '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
+            '/camera/image_raw@sensor_msgs/msg/Image[gz.msgs.Image'
+        ]
     )
 
     # Info log instruction printout

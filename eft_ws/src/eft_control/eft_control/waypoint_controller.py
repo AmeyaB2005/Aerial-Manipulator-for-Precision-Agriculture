@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleOdometry, VehicleStatus
+from std_msgs.msg import Bool
 import math
 
 class WaypointController(Node):
@@ -28,6 +29,13 @@ class WaypointController(Node):
         self.trajectory_pub = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
         self.vehicle_cmd_pub = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
 
+        # Publishers for Payload and Water Tank Control
+        self.payload_pub = self.create_publisher(Bool, '/drone/payload', 10)
+        self.water_tank_pub = self.create_publisher(Bool, '/drone/water_tank', 10)
+        
+        # Legacy compat trigger (MuJoCo arm watering)
+        self.tree_trigger_pub = self.create_publisher(Bool, '/drone/at_tree', 10)
+
         # Subscriber to monitor position
         self.odom_sub = self.create_subscription(VehicleOdometry, '/fmu/out/vehicle_odometry', self.odom_callback, qos_profile_sub)
 
@@ -40,18 +48,97 @@ class WaypointController(Node):
         self.current_state = "INITIALIZING"
         self.state_counter = 0
         self.setpoint_pos = None
-        self.max_vel = 0.5 # m/s (slow and smooth flight speed)
+        self.max_vel = 1.2 # m/s (flight speed between crop stops)
+        self.target_alt = -2.0 # 2 meters altitude (NED Z is negative)
 
-        # Waypoint configurations (NED: X->North, Y->East, Z->Down)
-        self.takeoff_alt = -3.0 # 3 meters altitude (NED Z is negative)
-        self.waypoint = [5.0, 5.0, -3.0] # 5 meters North, 5 meters East, 3 meters up
+        self.initial_yaw = None
+        self.current_yaw = 0.0
 
+        # Payload periodic trigger variables
+        self.payload_tick_counter = 0
+        self.payload_cycle_ticks = 40 # 4.0 seconds at 10Hz
+        self.payload_active_ticks = 10 # 1.0 second duration
+        self.payload_state = False
+
+        self.water_tank_state = False
+
+        # Generate linear crop waypoints in a snake-like pattern (NED: X->North, Y->East, Z->Down)
+        # In Gazebo world (ENU), the columns are at constant Y_world (-1.5, 1.5) and trees are along X_world (-5.0 to -2.16)
+        # Since X_world = Y_ned and Y_world = X_ned:
+        # - X_ned (first coord) = Y_world = y_rows
+        # - Y_ned (second coord) = X_world = x_coords
+        y_rows = [-1.5, 1.5] # Y_world coordinates
+        x_coords = [round(-5.0 + i * 0.71, 2) for i in range(5)] # X_world coordinates
+        
+        self.waypoints = []
+        for idx, y in enumerate(y_rows):
+            # Alternate direction of X to form a snake pattern across the columns
+            col_x = x_coords if idx % 2 == 0 else x_coords[::-1]
+            for x in col_x:
+                self.waypoints.append([y, x, self.target_alt])
+        
+        # Add home return waypoint
+        self.waypoints.append([0.0, 0.0, self.target_alt])
+        
+        self.current_wp_idx = 0
+        self.is_paused = False
+        self.pause_counter = 0
+        self.pause_duration = 5 # 5 timer ticks at 10Hz = 0.5s pause
+ 
         # Setpoint timer (Offboard mode requires continuous publishing at > 2Hz)
         self.timer = self.create_timer(0.1, self.timer_callback)
         self.get_logger().info("Waypoint Flight Controller node initialized. Starting heartbeat...")
 
     def odom_callback(self, msg):
         self.current_pos = [msg.position[0], msg.position[1], msg.position[2]]
+        
+        # Calculate current yaw from quaternion
+        w = msg.q[0]
+        x = msg.q[1]
+        y = msg.q[2]
+        z = msg.q[3]
+        siny_cosp = 2 * (w * z + x * y)
+        cosy_cosp = 1 - 2 * (y * y + z * z)
+        self.current_yaw = math.atan2(siny_cosp, cosy_cosp)
+        
+        if self.initial_yaw is None:
+            self.initial_yaw = self.current_yaw
+
+    def set_water_tank(self, open_tank):
+        if self.water_tank_state != open_tank:
+            self.water_tank_state = open_tank
+            msg = Bool()
+            msg.data = open_tank
+            self.water_tank_pub.publish(msg)
+            
+            # Keep at_tree sync'd for compatibility with simulate_ros.py / arm bending
+            self.tree_trigger_pub.publish(msg)
+            
+            state_str = "OPENED" if open_tank else "CLOSED"
+            self.get_logger().info(f"[WATER TANK] Water tank is now {state_str}!")
+
+    def update_payload_trigger(self):
+        # Only trigger payload while actively executing waypoints
+        if self.current_state == "WAYPOINT":
+            self.payload_tick_counter = (self.payload_tick_counter + 1) % self.payload_cycle_ticks
+            should_be_active = self.payload_tick_counter < self.payload_active_ticks
+            
+            if self.payload_state != should_be_active:
+                self.payload_state = should_be_active
+                msg = Bool()
+                msg.data = should_be_active
+                self.payload_pub.publish(msg)
+                
+                status_str = "ACTIVE (Spraying/Triggered)" if should_be_active else "INACTIVE"
+                self.get_logger().info(f"[PAYLOAD] State changed to {status_str}")
+        else:
+            # Turn off payload if not in waypoint state
+            if self.payload_state:
+                self.payload_state = False
+                msg = Bool()
+                msg.data = False
+                self.payload_pub.publish(msg)
+                self.get_logger().info("[PAYLOAD] State changed to INACTIVE (Landed/Off-mission)")
 
     def status_callback(self, msg):
         self.vehicle_status = msg
@@ -100,13 +187,18 @@ class WaypointController(Node):
             self.get_logger().info(
                 f"[State: {self.current_state}] Pos: "
                 f"[{self.current_pos[0]:.2f}, {self.current_pos[1]:.2f}, {self.current_pos[2]:.2f}] | "
-                f"Armed: {self.vehicle_status.arming_state} (Target: {VehicleStatus.ARMING_STATE_ARMED}) | "
-                f"Offboard: {self.vehicle_status.nav_state} (Target: {VehicleStatus.NAVIGATION_STATE_OFFBOARD})"
+                f"Tank: {'OPEN' if self.water_tank_state else 'CLOSED'} | "
+                f"Payload: {'ON' if self.payload_state else 'OFF'}"
             )
+
+        # Update payload trigger
+        self.update_payload_trigger()
+
+        yaw_target = self.initial_yaw if self.initial_yaw is not None else 0.0
 
         if self.current_state == "INITIALIZING":
             # Stream setpoints for ~2 seconds (20 cycles) before attempting to arm/switch mode
-            self.publish_trajectory_setpoint(0.0, 0.0, 0.0)
+            self.publish_trajectory_setpoint(0.0, 0.0, 0.0, yaw=yaw_target)
             if self.state_counter >= 20:
                 # Continuously request Offboard mode and Arming command every 1 second (10 cycles) until confirmed
                 if self.state_counter % 10 == 0:
@@ -120,36 +212,63 @@ class WaypointController(Node):
                     self.get_logger().info("PX4 successfully armed and set to offboard mode!")
                     self.current_state = "TAKEOFF"
                     self.state_counter = 0
-                    self.get_logger().info(f"Takeoff initiated! Rising to {abs(self.takeoff_alt)}m...")
+                    self.get_logger().info(f"Takeoff initiated! Rising to {abs(self.target_alt)}m...")
 
         elif self.current_state == "TAKEOFF":
             # Command takeoff altitude smoothly
-            target = [0.0, 0.0, self.takeoff_alt]
+            target = [0.0, 0.0, self.target_alt]
             sp = self.get_interpolated_setpoint(target, self.max_vel)
-            self.publish_trajectory_setpoint(sp[0], sp[1], sp[2])
+            self.publish_trajectory_setpoint(sp[0], sp[1], sp[2], yaw=yaw_target)
 
             # Check if takeoff altitude reached (within 0.25m)
-            alt_error = abs(self.current_pos[2] - self.takeoff_alt)
+            alt_error = abs(self.current_pos[2] - self.target_alt)
             if alt_error < 0.25:
                 self.current_state = "WAYPOINT"
                 self.state_counter = 0
-                self.get_logger().info(f"Takeoff altitude reached! Flying to waypoint: {self.waypoint}...")
+                self.current_wp_idx = 0
+                self.get_logger().info(f"Takeoff completed. Starting waypoint navigation for {len(self.waypoints)} targets...")
+                # Open water tank when starting grid waypoint flight
+                self.set_water_tank(True)
 
         elif self.current_state == "WAYPOINT":
-            # Command waypoint position smoothly
-            sp = self.get_interpolated_setpoint(self.waypoint, self.max_vel)
-            self.publish_trajectory_setpoint(sp[0], sp[1], sp[2])
-
-            # Check distance to waypoint
-            dist = math.sqrt(
-                (self.current_pos[0] - self.waypoint[0])**2 +
-                (self.current_pos[1] - self.waypoint[1])**2 +
-                (self.current_pos[2] - self.waypoint[2])**2
-            )
-            if dist < 0.35:
+            if self.current_wp_idx < len(self.waypoints):
+                target = self.waypoints[self.current_wp_idx]
+                
+                # Check distance to current target
+                dist = math.sqrt(
+                    (self.current_pos[0] - target[0])**2 +
+                    (self.current_pos[1] - target[1])**2 +
+                    (self.current_pos[2] - target[2])**2
+                )
+                
+                if dist < 0.4:
+                    if not self.is_paused:
+                        self.is_paused = True
+                        self.pause_counter = 0
+                        # Check if last waypoint (home return)
+                        if self.current_wp_idx == len(self.waypoints) - 1:
+                            self.get_logger().info("Returned to home starting point. Preparing to land...")
+                            self.set_water_tank(False)
+                        else:
+                            self.get_logger().info(f"Reached crop target {self.current_wp_idx+1}/{len(self.waypoints)-1} at [{target[0]:.2f}, {target[1]:.2f}]. Stopping to water...")
+                    
+                    if self.is_paused:
+                        self.pause_counter += 1
+                        if self.pause_counter >= self.pause_duration:
+                            self.is_paused = False
+                            self.current_wp_idx += 1
+                            # Move to next setpoint immediately
+                            if self.current_wp_idx < len(self.waypoints):
+                                target = self.waypoints[self.current_wp_idx]
+                
+                # Interpolate setpoint towards active target
+                sp = self.get_interpolated_setpoint(target, self.max_vel)
+                self.publish_trajectory_setpoint(sp[0], sp[1], sp[2], yaw=yaw_target)
+            else:
                 self.current_state = "LAND"
                 self.state_counter = 0
-                self.get_logger().info("Waypoint reached! Triggering landing sequence...")
+                self.get_logger().info("All crop rows successfully covered! Initiating landing sequence...")
+                self.set_water_tank(False)
 
         elif self.current_state == "LAND":
             # Send auto-land command
