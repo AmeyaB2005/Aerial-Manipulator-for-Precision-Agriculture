@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EFT E610P Digital Twin Studio | Precision Agriculture</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <!-- Top Glass Bar -->
+  <header class="top-nav">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="brand-title">EFT E610P <span>Digital Twin Studio</span></h1>
+        <div class="brand-subtitle">Aerial Manipulator for Precision Agriculture &bull; PX4 SITL Digital Twin</div>
+      </div>
+    </div>
+
+    <div class="top-center-stats">
+      <div class="stat-pill"><span class="stat-dot"></span> <span id="stat-poly">560k Polygons</span></div>
+      <div class="stat-pill"><span class="stat-label">Wheelbase:</span> 1170mm</div>
+      <div class="stat-pill"><span class="stat-label">Payload:</span> 10L Tank + TDCR Arm</div>
+      <div class="stat-pill"><span class="stat-label">FPS:</span> <span id="stat-fps">60</span></div>
+    </div>
+
+    <div class="top-actions">
+      <div class="res-select-wrapper">
+        <select id="photo-res-select" class="glass-select">
+          <option value="4k">4K UHD (3840×2160)</option>
+          <option value="2k" selected>2K QHD (2560×1440)</option>
+          <option value="1080p">1080p FHD (1920×1080)</option>
+          <option value="screen">Current Viewport</option>
+        </select>
+      </div>
+      <button id="btn-snap-top" class="btn-shutter">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+          <circle cx="12" cy="13" r="4"/>
+        </svg>
+        <span>Take Clear Photo</span>
+      </button>
+      <button id="btn-gallery-toggle" class="btn-icon" title="View Captured Photos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <polyline points="21 15 16 10 5 21"/>
+        </svg>
+        <span id="gallery-badge" class="badge">0</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Left Floating Camera & Environment Panel -->
+  <aside class="panel panel-left">
+    <div class="panel-section">
+      <div class="section-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+        <span>Camera Angles</span>
+      </div>
+      <div class="grid-buttons">
+        <button class="cam-btn active" data-cam="hero">
+          <span class="icon">📐</span> Hero 3/4 View
+        </button>
+        <button class="cam-btn" data-cam="front">
+          <span class="icon">🎯</span> Front Elevation
+        </button>
+        <button class="cam-btn" data-cam="side">
+          <span class="icon">↔️</span> Side Profile
+        </button>
+        <button class="cam-btn" data-cam="top">
+          <span class="icon">⬇️</span> Top-Down Plan
+        </button>
+        <button class="cam-btn" data-cam="underside">
+          <span class="icon">🔬</span> Underside Payload
+        </button>
+        <button class="cam-btn" data-cam="camera-fpv">
+          <span class="icon">📹</span> FPV Chin Cam
+        </button>
+        <button class="cam-btn" data-cam="motor">
+          <span class="icon">⚡</span> Motor & Rotor Close
+        </button>
+        <button class="cam-btn" data-cam="arm-focus">
+          <span class="icon">🦾</span> TDCR Arm Focus
+        </button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>
+        <span>Studio Lighting & Environment</span>
+      </div>
+      <div class="env-selector">
+        <button class="env-btn active" data-env="studio-white">
+          <span class="env-swatch swatch-white"></span>
+          <span>Clean White Studio</span>
+        </button>
+        <button class="env-btn" data-env="cyber-dark">
+          <span class="env-swatch swatch-dark"></span>
+          <span>Dark Sci-Fi Cyber</span>
+        </button>
+        <button class="env-btn" data-env="farmland">
+          <span class="env-swatch swatch-farm"></span>
+          <span>Farmland Sunset</span>
+        </button>
+        <button class="env-btn" data-env="wireframe">
+          <span class="env-swatch swatch-blueprint"></span>
+          <span>Technical Blueprint</span>
+        </button>
+        <button class="env-btn" data-env="transparent">
+          <span class="env-swatch swatch-trans"></span>
+          <span>Transparent Alpha (PNG)</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <span>Optics & Motion</span>
+      </div>
+      <div class="control-group">
+        <div class="control-label">
+          <span>Camera Focal Length (FOV)</span>
+          <span id="fov-val">45°</span>
+        </div>
+        <input type="range" id="slider-fov" min="20" max="75" value="45" class="slider">
+      </div>
+      <div class="toggle-row">
+        <span>360° Turntable Spin</span>
+        <label class="switch">
+          <input type="checkbox" id="toggle-turntable">
+          <span class="slider-toggle"></span>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <span>Spin Propellers (Flight Sim)</span>
+        <label class="switch">
+          <input type="checkbox" id="toggle-props" checked>
+          <span class="slider-toggle"></span>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <span>Technical Specs Overlay</span>
+        <label class="switch">
+          <input type="checkbox" id="toggle-specs" checked>
+          <span class="slider-toggle"></span>
+        </label>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Right Floating Digital Twin Inspector -->
+  <aside class="panel panel-right">
+    <div class="panel-section">
+      <div class="section-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+        <span>Digital Twin Components</span>
+      </div>
+      <div class="component-list">
+        <label class="comp-item">
+          <input type="checkbox" id="comp-cad-frame" checked>
+          <span class="comp-name">EFT E610P Airframe Mesh (CAD)</span>
+          <span class="comp-badge">560k &#9651;</span>
+        </label>
+        <label class="comp-item">
+          <input type="checkbox" id="comp-tank" checked>
+          <span class="comp-name">10L Spray Payload Tank & Manifold</span>
+          <span class="comp-badge">HDPE</span>
+        </label>
+        <label class="comp-item">
+          <input type="checkbox" id="comp-rotors" checked>
+          <span class="comp-name">6x 24" Carbon Propellers & Motors</span>
+          <span class="comp-badge">CW/CCW</span>
+        </label>
+        <label class="comp-item">
+          <input type="checkbox" id="comp-landing-gear" checked>
+          <span class="comp-name">Dual Skid Carbon Landing Gear</span>
+          <span class="comp-badge">Structure</span>
+        </label>
+        <label class="comp-item">
+          <input type="checkbox" id="comp-chin-cam" checked>
+          <span class="comp-name">Chin FPV Camera Gimbal</span>
+          <span class="comp-badge">1080p</span>
+        </label>
+        <label class="comp-item">
+          <input type="checkbox" id="comp-tdcr-arm" checked>
+          <span class="comp-name">TDCR Continuum Robotic Arm</span>
+          <span class="comp-badge highlight">Manipulator</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        <span>Interactive Articulation</span>
+      </div>
+      <div class="control-group">
+        <div class="control-label">
+          <span>Exploded View Assembly</span>
+          <span id="exploded-val">0%</span>
+        </div>
+        <input type="range" id="slider-exploded" min="0" max="100" value="0" class="slider">
+      </div>
+
+      <div class="control-group">
+        <div class="control-label">
+          <span>TDCR Manipulator Bending</span>
+          <span id="tdcr-val">0°</span>
+        </div>
+        <input type="range" id="slider-tdcr" min="-60" max="60" value="0" class="slider">
+      </div>
+
+      <div class="control-group">
+        <div class="control-label">
+          <span>TDCR Arm Rotation (Yaw)</span>
+          <span id="tdcr-yaw-val">0°</span>
+        </div>
+        <input type="range" id="slider-tdcr-yaw" min="-180" max="180" value="0" class="slider">
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        <span>Livery & Materials</span>
+      </div>
+      <div class="material-grid">
+        <button class="mat-btn active" data-mat="carbon">
+          <span class="mat-swatch mat-carbon"></span> Carbon Fiber
+        </button>
+        <button class="mat-btn" data-mat="agri-orange">
+          <span class="mat-swatch mat-orange"></span> Agri Orange
+        </button>
+        <button class="mat-btn" data-mat="stealth-black">
+          <span class="mat-swatch mat-black"></span> Stealth Matte
+        </button>
+        <button class="mat-btn" data-mat="clean-white">
+          <span class="mat-swatch mat-white"></span> Pro White
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Technical Overlay HUD -->
+  <div id="tech-hud" class="tech-hud">
+    <div class="hud-box hud-top-left">
+      <div class="hud-tag">AIRCRAFT IDENTIFIER</div>
+      <div class="hud-main">EFT E610P AGRI-HEXACOPTER</div>
+      <div class="hud-sub">PX4 AUTOPILOT SITL DIGITAL TWIN</div>
+    </div>
+
+    <div class="hud-box hud-bottom-left">
+      <div class="hud-grid">
+        <div><span class="hud-muted">DIAGONAL WHEELBASE:</span> 1170.8 mm</div>
+        <div><span class="hud-muted">FRAME SPAN:</span> 1407 mm</div>
+        <div><span class="hud-muted">DRY MASS:</span> 5.92 kg</div>
+        <div><span class="hud-muted">MAX TAKEOFF WEIGHT:</span> 16.0 kg</div>
+        <div><span class="hud-muted">TANK CAPACITY:</span> 10.0 L</div>
+        <div><span class="hud-muted">PAYLOAD:</span> TDCR 3-Segment Arm</div>
+      </div>
+    </div>
+
+    <div class="hud-box hud-bottom-right">
+      <div class="hud-tag">CAMERA VIEW</div>
+      <div id="hud-cam-name" class="hud-main">HERO 3/4 PERSPECTIVE</div>
+      <div class="hud-sub" id="hud-res-label">READY FOR 4K / 2K CAPTURE</div>
+    </div>
+  </div>
+
+  <!-- Bottom Floating Shutter Bar -->
+  <div class="bottom-bar">
+    <div class="shutter-container">
+      <button id="btn-quick-snap" class="main-shutter-btn" title="Capture High Resolution Photo">
+        <div class="shutter-inner">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+        </div>
+      </button>
+      <div class="shutter-label">SNAP PHOTO</div>
+    </div>
+  </div>
+
+  <!-- Photo Gallery Slide-over Modal -->
+  <div id="gallery-modal" class="modal-backdrop">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <div class="modal-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <polyline points="21 15 16 10 5 21"/>
+          </svg>
+          <span>Photo Gallery & Renders</span>
+        </div>
+        <button id="btn-close-gallery" class="btn-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-subtitle">Photos saved directly to <code>~/Aerial-Manipulator-for-Precision-Agriculture/renders/</code></div>
+      <div id="gallery-grid" class="gallery-grid">
+        <div class="gallery-empty">No photos captured yet. Click the shutter button to take clear photos!</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast">
+    <div class="toast-icon">✓</div>
+    <div class="toast-message" id="toast-msg">Photo captured and saved!</div>
+  </div>
+
+  <!-- Vendor Scripts -->
+  <script src="vendor/three.min.js"></script>
+  <script src="vendor/OrbitControls.js"></script>
+  <script src="vendor/STLLoader.js"></script>
+  <script src="vendor/OBJLoader.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

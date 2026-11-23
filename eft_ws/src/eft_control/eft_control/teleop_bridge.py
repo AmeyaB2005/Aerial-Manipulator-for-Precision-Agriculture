@@ -1,118 +1,146 @@
+"""
+teleop_bridge: /cmd_vel (ROS FLU) -> PX4 offboard setpoints (NED) over uXRCE-DDS
+
+/cmd_vel conventions:
+    linear.x  forward +, linear.y left +, linear.z up + (climb rate, m/s)
+    angular.z CCW +
+    angular.x special commands:
+         2.0  joystick ARM     -> OFFBOARD + ARM, climb to takeoff_height
+        -2.0  joystick DISARM  -> DISARM
+         1.0  keyboard takeoff (kept for keyboard_teleop)
+        -1.0  keyboard land    (kept for keyboard_teleop)
+"""
+
+import math
+
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from geometry_msgs.msg import Twist
 from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand
 
+DT = 0.1            # heartbeat period (10 Hz)
+CMD_TIMEOUT = 0.3   # s without /cmd_vel -> zero velocities
+
+
 class TeleopBridge(Node):
     def __init__(self):
         super().__init__('teleop_bridge')
 
-        # Configure QoS profile to match PX4's expectations
-        qos_profile = QoSProfile(
+        self.declare_parameter('auto_arm', False)
+        self.declare_parameter('takeoff_height', 1.5)
+        self.declare_parameter('max_height', 30.0)
+        self.auto_arm = bool(self.get_parameter('auto_arm').value)
+        self.takeoff_height = float(self.get_parameter('takeoff_height').value)
+        self.max_height = float(self.get_parameter('max_height').value)
+
+        qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
-            depth=1
+            depth=1,
         )
+        self.offboard_mode_pub = self.create_publisher(
+            OffboardControlMode, '/fmu/in/offboard_control_mode', qos)
+        self.trajectory_pub = self.create_publisher(
+            TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos)
+        self.vehicle_cmd_pub = self.create_publisher(
+            VehicleCommand, '/fmu/in/vehicle_command', qos)
 
-        # Publishers to PX4 uORB topics
-        self.offboard_mode_pub = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
-        self.trajectory_pub = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
-        self.vehicle_cmd_pub = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
-
-        # Subscriber to cmd_vel (from teleop_twist_keyboard)
         self.cmd_vel_sub = self.create_subscription(Twist, '/cmd_vel', self.cmd_vel_callback, 10)
 
-        # Control state (NED coordinate frame: X-Forward, Y-Right/East, Z-Down/Descend)
         self.vx = 0.0
         self.vy = 0.0
-        self.vz = 0.0
+        self.vz = 0.0          # ROS up-positive climb rate
         self.yaw_rate = 0.0
-        self.target_z = 0.0
+        self.target_z = 0.0    # NED: negative = up
         self.last_cmd_time = self.get_clock().now()
 
-        # Heartbeat timer (Offboard mode requires continuous publishing at > 2Hz)
-        self.timer = self.create_timer(0.1, self.timer_callback)
-        self.offboard_started = False
-        self.arm_count = 0
+        self.tick = 0
+        self.auto_armed = False
+        self.timer = self.create_timer(DT, self.timer_callback)
 
+        self.get_logger().info(
+            f"Teleop bridge up (auto_arm={self.auto_arm}). Streaming offboard heartbeat at 10 Hz.")
+
+    # ------------------------------------------------------------------
     def cmd_vel_callback(self, msg):
-        # Map teleop keys to velocities and track command timestamps
         self.last_cmd_time = self.get_clock().now()
-        self.vx = msg.linear.x
-        self.vy = -msg.linear.y  # Invert Y to map left (ROS) to East/Right (PX4)
-        self.yaw_rate = -msg.angular.z # Invert Yaw to match turning directions
 
-        # Check for Takeoff / Landing commands sent via angular.x
-        if msg.angular.x == 1.0:
-            # Force Offboard mode and Arm commands if takeoff key is pressed
-            self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)
-            self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
-            if self.target_z >= 0.0:
-                self.target_z = -1.5  # Takeoff to 1.5m initial height
-                self.get_logger().info(f"Takeoff command: Target Z set to {self.target_z}m")
+        cmd = msg.angular.x
+        if math.isclose(cmd, 2.0) or math.isclose(cmd, 1.0):
+            self.arm_offboard()
+            if self.target_z >= 0.0 or math.isclose(cmd, 2.0):
+                self.target_z = min(self.target_z, -self.takeoff_height)
             else:
-                self.target_z -= 0.5  # Incremental takeoff (climbs slowly)
-                self.get_logger().info(f"Takeoff command (incremental): Target Z set to {self.target_z}m")
-        elif msg.angular.x == -1.0:
-            self.target_z = 0.0  # Land on ground
-            self.get_logger().info("Landing command: Target Z set to 0.0m")
+                self.target_z -= 0.5  # keyboard: incremental takeoff
+            self.get_logger().info(f"ARM/takeoff: target Z = {self.target_z:.2f} m")
+            return
+        if math.isclose(cmd, -2.0):
+            self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0)
+            self.target_z = 0.0
+            self.vx = self.vy = self.vz = self.yaw_rate = 0.0
+            self.get_logger().info("DISARM sent")
+            return
+        if math.isclose(cmd, -1.0):
+            self.target_z = 0.0
+            self.get_logger().info("Land: target Z = 0.0 m")
+            return
 
-        # Support adjusting target height with Z linear velocity (from climb/descend keys)
-        if msg.linear.z > 0.0:
-            self.target_z -= 0.2  # Climb target Z (negative is up)
-            self.get_logger().info(f"Manual Climb: Target Z set to {self.target_z}m")
-        elif msg.linear.z < 0.0:
-            self.target_z += 0.2  # Descend target Z
-            if self.target_z > 0.0:
-                self.target_z = 0.0
-            self.get_logger().info(f"Manual Descend: Target Z set to {self.target_z}m")
+        self.vx = msg.linear.x
+        self.vy = -msg.linear.y         # ROS left+ -> NED east+
+        self.vz = msg.linear.z
+        self.yaw_rate = -msg.angular.z  # ROS CCW+ -> NED CW+
 
+    # ------------------------------------------------------------------
     def timer_callback(self):
-        # 1. Publish Offboard Control Mode (Position and Velocity setpoints active)
-        offboard_msg = OffboardControlMode()
-        offboard_msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        offboard_msg.position = True
-        offboard_msg.velocity = True
-        offboard_msg.acceleration = False
-        offboard_msg.attitude = False
-        offboard_msg.body_rate = False
-        self.offboard_mode_pub.publish(offboard_msg)
-
-        # If no new control keys are pressed for > 0.3s, stop horizontal drift
         now = self.get_clock().now()
-        dt_cmd = (now - self.last_cmd_time).nanoseconds / 1e9
-        if dt_cmd > 0.3:
-            self.vx = 0.0
-            self.vy = 0.0
-            self.yaw_rate = 0.0
+        stamp = int(now.nanoseconds / 1000)
 
-        # 2. Publish Trajectory Setpoint (Z target altitude + XY velocities)
-        setpoint_msg = TrajectorySetpoint()
-        setpoint_msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        setpoint_msg.position = [float('nan'), float('nan'), self.target_z]
-        setpoint_msg.velocity = [self.vx, self.vy, float('nan')]
-        setpoint_msg.acceleration = [float('nan'), float('nan'), float('nan')]
-        setpoint_msg.jerk = [float('nan'), float('nan'), float('nan')]
-        setpoint_msg.yaw = float('nan')
-        setpoint_msg.yawspeed = self.yaw_rate
-        self.trajectory_pub.publish(setpoint_msg)
+        if (now - self.last_cmd_time).nanoseconds / 1e9 > CMD_TIMEOUT:
+            self.vx = self.vy = self.vz = self.yaw_rate = 0.0
 
-        # 3. Arm and engage Offboard mode once heartbeat is established
-        if not self.offboard_started:
-            self.arm_count += 1
-            if self.arm_count == 10:
-                self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0) # Set Offboard Mode
-                self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0) # Arm
-                self.get_logger().info("Dispatched Offboard Mode and Arming commands!")
-                self.offboard_started = True
+        # Integrate climb rate into the altitude setpoint
+        self.target_z -= self.vz * DT
+        self.target_z = max(-self.max_height, min(0.0, self.target_z))
+
+        mode = OffboardControlMode()
+        mode.timestamp = stamp
+        mode.position = True
+        mode.velocity = True
+        mode.acceleration = False
+        mode.attitude = False
+        mode.body_rate = False
+        self.offboard_mode_pub.publish(mode)
+
+        sp = TrajectorySetpoint()
+        sp.timestamp = stamp
+        nan = float('nan')
+        sp.position = [nan, nan, float(self.target_z)]
+        sp.velocity = [float(self.vx), float(self.vy), nan]
+        sp.acceleration = [nan, nan, nan]
+        sp.jerk = [nan, nan, nan]
+        sp.yaw = nan
+        sp.yawspeed = float(self.yaw_rate)
+        self.trajectory_pub.publish(sp)
+
+        if self.auto_arm and not self.auto_armed:
+            self.tick += 1
+            if self.tick >= 10:
+                self.arm_offboard()
+                self.auto_armed = True
+                self.get_logger().info("auto_arm: OFFBOARD + ARM sent")
+
+    # ------------------------------------------------------------------
+    def arm_offboard(self):
+        self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)
+        self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
 
     def publish_vehicle_command(self, command, param1=0.0, param2=0.0):
         msg = VehicleCommand()
         msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        msg.param1 = param1
-        msg.param2 = param2
+        msg.param1 = float(param1)
+        msg.param2 = float(param2)
         msg.command = command
         msg.target_system = 1
         msg.target_component = 1
@@ -120,6 +148,7 @@ class TeleopBridge(Node):
         msg.source_component = 1
         msg.from_external = True
         self.vehicle_cmd_pub.publish(msg)
+
 
 def main(args=None):
     rclpy.init(args=args)
@@ -130,7 +159,8 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
+
 
 if __name__ == '__main__':
     main()

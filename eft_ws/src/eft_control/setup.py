@@ -15,6 +15,7 @@ setup(
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'urdf'), glob('urdf/*.urdf')),
         (os.path.join('share', package_name, 'rviz'), glob('rviz/*.rviz')),
+        (os.path.join('share', package_name, 'config'), glob('config/*')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -34,7 +35,8 @@ setup(
             'waypoint_controller = eft_control.waypoint_controller:main',
             'waypoint_controller_mujoco = eft_control.waypoint_controller_mujoco:main',
             'keyboard_teleop = eft_control.keyboard_teleop:main',
-            'joystick_teleop = eft_control.joystick_teleop:main'
+            'joystick_teleop = eft_control.joystick_teleop:main',
+            'flight_profile_player = eft_control.flight_profile_player:main'
         ],
     },
 )

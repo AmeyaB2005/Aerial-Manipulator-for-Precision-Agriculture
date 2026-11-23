@@ -1,7 +1,8 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import ExecuteProcess, DeclareLaunchArgument
+from launch.actions import ExecuteProcess, DeclareLaunchArgument, LogInfo
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -19,12 +20,17 @@ def generate_launch_description():
     px4_env['GALLIUM_DRIVER'] = 'llvmpipe'
     px4_env['PX4_GZ_NO_FOLLOW'] = '1'
 
-    # Declare path argument for QGroundControl
+    # Declare arguments
     qgc_path_default = os.path.expanduser('~/Downloads/QGroundControl-x86_64.AppImage')
     qgc_path_arg = DeclareLaunchArgument(
         'qgc_path',
         default_value=qgc_path_default,
         description='Absolute path to QGroundControl AppImage'
+    )
+    auto_flight_arg = DeclareLaunchArgument(
+        'auto_flight',
+        default_value='true',
+        description='Automatically takeoff and execute physical log flight profile'
     )
 
     # 1. Micro XRCE-DDS Agent
@@ -99,8 +105,33 @@ def generate_launch_description():
         arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock']
     )
 
+    # 9. Flight Profile Player (Autonomous reproduction of physical flight log)
+    flight_profile_player = Node(
+        package='eft_control',
+        executable='flight_profile_player',
+        name='flight_profile_player',
+        output='screen',
+        condition=IfCondition(LaunchConfiguration('auto_flight')),
+        parameters=[{'use_sim_time': True}]
+    )
+
+    banner = LogInfo(
+        condition=IfCondition(LaunchConfiguration('auto_flight')),
+        msg="\n"
+            "===================================================================\n"
+            "  EFT E610P  |  PHYSICAL FLIGHT PROFILE REPLICATION IN GAZEBO\n"
+            "-------------------------------------------------------------------\n"
+            "  Phase 1: Takeoff & Low Hover (<1m, ~0.8m)   [~30s]\n"
+            "  Phase 2: Reposition & Slight Yaw Rotation   [~15s]\n"
+            "  Phase 3: Climb to Max Altitude (3.0m)       [~10s]\n"
+            "  Phase 4: Active Station Keeping (2m box)    [~35s]\n"
+            "  Phase 5: Return to Launch & Auto Touchdown  [~15s]\n"
+            "===================================================================\n"
+    )
+
     return LaunchDescription([
         qgc_path_arg,
+        auto_flight_arg,
         dds_agent,
         px4_gazebo,
         robot_state_publisher,
@@ -108,5 +139,7 @@ def generate_launch_description():
         trajectory_visualizer,
         rviz2,
         qgc,
-        clock_bridge
+        clock_bridge,
+        flight_profile_player,
+        banner
     ])

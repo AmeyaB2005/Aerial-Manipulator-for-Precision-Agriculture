@@ -119,8 +119,11 @@ def generate_launch_description():
     instruction_log = LogInfo(
         msg="\n"
             "===============================================================\n"
-            "SIMULATION READY FOR JOYSTICK TELEOP!\n"
-            "Ensure your gamepad/joystick is connected to /dev/input/js0\n"
+            "SIMULATION READY FOR FLYSKY FS-i6X JOYSTICK TELEOP!\n"
+            "  - Controller device: /dev/input/js0\n"
+            "  - Left Stick (Mode 2):\n"
+            "      * Bottom-Left  (Throttle Down + Yaw Left)  -> ARM\n"
+            "      * Bottom-Right (Throttle Down + Yaw Right) -> DISARM\n"
             "===============================================================\n"
     )
 

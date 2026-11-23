@@ -11,6 +11,13 @@
   <depend>geometry_msgs</depend>
   <depend>px4_msgs</depend>
   <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+
+  <exec_depend>joy</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>joint_state_publisher</exec_depend>
+  <exec_depend>rviz2</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
