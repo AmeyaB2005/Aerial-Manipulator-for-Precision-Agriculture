@@ -24,6 +24,9 @@ from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
+from launch.actions import DeclareLaunchArgument  # noqa: F401  (external path arguments)
+from launch.substitutions import LaunchConfiguration
+from eft_control.external_paths import external_path_args
 
 
 def generate_launch_description():
@@ -88,14 +91,14 @@ def generate_launch_description():
     # ------------------------------------------------------------------
     # 1. Micro XRCE-DDS Agent
     dds_agent = ExecuteProcess(
-        cmd=['/home/ameya/Micro-XRCE-DDS-Agent/build/MicroXRCEAgent', 'udp4', '-p', '8888'],
+        cmd=[LaunchConfiguration('xrce_agent'), 'udp4', '-p', '8888'],
         output='screen'
     )
 
     # 2. PX4 SITL & Gazebo
     px4_gazebo = ExecuteProcess(
         cmd=['make', 'px4_sitl', 'gz_eft_e610p'],
-        cwd='/home/ameya/PX4-Autopilot',
+        cwd=LaunchConfiguration('px4_dir'),
         env=px4_env,
         output='screen'
     )
@@ -230,7 +233,7 @@ def generate_launch_description():
             "===============================================================\n"
     )
 
-    return LaunchDescription(declared_args + [
+    return LaunchDescription(external_path_args() + declared_args + [
         dds_agent,
         px4_gazebo,
         robot_state_publisher,

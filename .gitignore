@@ -1,3 +1,6 @@
+# Python cache (folders outside eft_ws/; eft_ws/.gitignore covers the workspace)
+__pycache__/
+*.pyc
 
 # Runtime logs
 *.log

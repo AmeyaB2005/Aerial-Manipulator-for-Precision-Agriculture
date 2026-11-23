@@ -8,6 +8,9 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from PIL import Image
 
+# Repository root (this file is in <repo>/eft_studio/), so paths work wherever the repo is cloned
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 def load_stl(stl_path):
     with open(stl_path, 'rb') as f:
         f.seek(80)
@@ -141,13 +144,13 @@ def render_studio_view(verts, normals, elev, azim, filename, title="EFT E610P Di
               transform=ax.transAxes, color=text_color, fontsize=10, family='monospace')
     
     plt.tight_layout()
-    out_path = os.path.join('/home/ameya/Aerial-Manipulator-for-Precision-Agriculture/renders', filename)
+    out_path = os.path.join(REPO_ROOT, 'renders', filename)
     plt.savefig(out_path, dpi=200, facecolor=bg_color, edgecolor='none', bbox_inches='tight')
     plt.close()
     print(f'Rendered photo: {out_path}')
 
 def main():
-    stl_path = '/home/ameya/Aerial-Manipulator-for-Precision-Agriculture/px4_customizations/models/eft_e610p/meshes/frame.STL'
+    stl_path = os.path.join(REPO_ROOT, 'px4_customizations', 'models', 'eft_e610p', 'meshes', 'frame.STL')
     print('Loading 560k polygon STL CAD model...')
     verts, normals = load_stl(stl_path)
     

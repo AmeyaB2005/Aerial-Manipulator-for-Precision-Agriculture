@@ -21,15 +21,23 @@ visualization tools for the **EFT E610P** agricultural multirotor simulation.
 ## Prerequisites
 Ubuntu 24.04 with **ROS 2 Jazzy** and **Gazebo Harmonic**, plus these tools installed separately (they are not part of this repository):
 
-| Tool | Expected location | Used by |
+| Tool | Default location | Used by |
 |---|---|---|
 | [PX4-Autopilot](https://github.com/PX4/PX4-Autopilot) (SITL built) | `~/PX4-Autopilot` | all launches |
-| [Micro XRCE-DDS Agent](https://github.com/eProsima/Micro-XRCE-DDS-Agent) | `~/Micro-XRCE-DDS-Agent/build/MicroXRCEAgent` | all launches |
-| [QGroundControl](https://qgroundcontrol.com) AppImage | `~/Downloads/QGroundControl-x86_64.AppImage` | QGC launches (override with `qgc_path:=...`) |
+| [Micro XRCE-DDS Agent](https://github.com/eProsima/Micro-XRCE-DDS-Agent) | `MicroXRCEAgent` on the `PATH` (after `sudo make install`), else `~/Micro-XRCE-DDS-Agent/build/MicroXRCEAgent` | all launches |
+| [QGroundControl](https://qgroundcontrol.com) AppImage | `~/Downloads/QGroundControl-x86_64.AppImage` | QGC launches |
 | ROS 2 `joy` package (`sudo apt install ros-jazzy-joy`) and a FlySky FS-i6X over USB | – | joystick / FS-i6X launches |
 | MuJoCo for Python (`pip install mujoco`) | – | MuJoCo co-simulation |
 
-> The PX4 and Micro XRCE-DDS Agent paths are set in the launch files (`eft_ws/src/eft_control/launch/`). Adjust them there if your installation lives elsewhere.
+**Installed somewhere else?** No paths need editing. Point the launch files to your installation with a launch argument or an environment variable:
+
+| Tool | Launch argument | Environment variable |
+|---|---|---|
+| PX4-Autopilot folder | `px4_dir:=$HOME/path/to/PX4-Autopilot` | `export PX4_DIR=...` |
+| Micro XRCE-DDS Agent | `xrce_agent:=$HOME/path/to/MicroXRCEAgent` | `export MICRO_XRCE_AGENT=...` |
+| QGroundControl AppImage | `qgc_path:=$HOME/path/to/QGroundControl.AppImage` | – |
+
+All commands below are run from the root of the cloned repository, wherever you cloned it.
 
 ## Setup Instructions
 
@@ -66,10 +74,10 @@ Starts the drone waypoint navigation in Gazebo and triggers the MuJoCo-simulated
   ```bash
   ros2 launch eft_control waypoint_flight_mujoco.launch.py
   ```
-* **Terminal 2: Run the MuJoCo simulation script** (from this repository's `mujoco_tdcr/` folder)
+* **Terminal 2: Run the MuJoCo simulation script** (from the repository root)
   ```bash
   source /opt/ros/jazzy/setup.bash
-  cd ~/Aerial-Manipulator-for-Precision-Agriculture/mujoco_tdcr
+  cd mujoco_tdcr
   python3 simulate_ros.py
   ```
   The arm bends when the drone reaches a target (topic `/drone/at_tree`).
@@ -102,10 +110,10 @@ Launches the simulation with offboard teleoperation bridges, allowing you to fly
   ```bash
   ros2 launch eft_control keyboard_teleop.launch.py
   ```
-* **Terminal 2: Launch the keyboard listener node**
+* **Terminal 2: Launch the keyboard listener node** (from the repository root)
   ```bash
-  source ~/Aerial-Manipulator-for-Precision-Agriculture/eft_ws/install/setup.bash
-  python3 ~/Aerial-Manipulator-for-Precision-Agriculture/eft_ws/src/eft_control/eft_control/keyboard_teleop.py
+  source eft_ws/install/setup.bash
+  ros2 run eft_control keyboard_teleop
   ```
 
 ### 6. Joystick Teleoperation

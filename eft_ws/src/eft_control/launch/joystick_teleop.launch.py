@@ -3,6 +3,9 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import ExecuteProcess, LogInfo
 from launch_ros.actions import Node
+from launch.actions import DeclareLaunchArgument  # noqa: F401  (external path arguments)
+from launch.substitutions import LaunchConfiguration
+from eft_control.external_paths import external_path_args
 
 def generate_launch_description():
     pkg_share = get_package_share_directory('eft_control')
@@ -21,14 +24,14 @@ def generate_launch_description():
 
     # 1. Micro XRCE-DDS Agent
     dds_agent = ExecuteProcess(
-        cmd=['/home/ameya/Micro-XRCE-DDS-Agent/build/MicroXRCEAgent', 'udp4', '-p', '8888'],
+        cmd=[LaunchConfiguration('xrce_agent'), 'udp4', '-p', '8888'],
         output='screen'
     )
 
     # 2. PX4 SITL & Gazebo
     px4_gazebo = ExecuteProcess(
         cmd=['make', 'px4_sitl', 'gz_eft_e610p'],
-        cwd='/home/ameya/PX4-Autopilot',
+        cwd=LaunchConfiguration('px4_dir'),
         env=px4_env,
         output='screen'
     )
@@ -127,7 +130,7 @@ def generate_launch_description():
             "===============================================================\n"
     )
 
-    return LaunchDescription([
+    return LaunchDescription(external_path_args() + [
         dds_agent,
         px4_gazebo,
         robot_state_publisher,

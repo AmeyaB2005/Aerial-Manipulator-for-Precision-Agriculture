@@ -694,7 +694,7 @@ async function takeClearPhoto() {
   link.href = dataUrl;
   link.click();
 
-  // 2. Save directly to ~/Aerial-Manipulator-for-Precision-Agriculture/renders/ via Server API
+  // 2. Save directly to the repository's renders/ folder via the server API (server.py)
   try {
     const resp = await fetch('/api/save_photo', {
       method: 'POST',
